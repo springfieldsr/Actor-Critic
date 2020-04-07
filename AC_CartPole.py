@@ -18,9 +18,9 @@ tf.set_random_seed(2)
 
 # Hyper Parameters
 OUTPUT_GRAPH = True
-MAX_EPISODE = 1000
+MAX_EPISODE = 2000
 DISPLAY_REWARD_THRESHOLD = 200  # renders environment if total episode reward is greater then this threshold
-MAX_EP_STEPS = 1000   # maximum time step in one episode
+MAX_EP_STEPS = 200   # maximum time step in one episode
 RENDER = False  # rendering wastes time
 GAMMA = 0.9     # reward discount in TD error
 LR_A = 0.001    # learning rate for actor
@@ -138,16 +138,16 @@ class Critic(object):
         s, s_ = s[np.newaxis, :], s_[np.newaxis, :]
 
         v_ = self.sess.run(self.v, {self.s: s_})
-        td_error, _ = self.sess.run([self.td_error, self.train_op],
+        td_error, _, loss = self.sess.run([self.td_error, self.train_op, self.loss],
                                           {self.s: s, self.v_: v_, self.r: r})
-        return td_error
+        return td_error, loss
 
 
 sess = tf.Session()
 
 global_step = tf.Variable(0, trainable=False)
 learning_rate_A = tf.compat.v1.train.exponential_decay(0.0005, global_step, 300, 0.98)
-learning_rate_C = tf.compat.v1.train.exponential_decay(0.001, global_step, 300, 0.98)
+learning_rate_C = tf.compat.v1.train.exponential_decay(0.0006, global_step, 300, 0.98)
 
 actor = Actor(sess, n_features=N_F, n_actions=N_A, lr=learning_rate_A, global_step=global_step)
 critic = Critic(sess, n_features=N_F, lr=learning_rate_C, global_step=global_step)     # we need a good teacher, so the teacher should learn faster than the actor
@@ -181,7 +181,7 @@ for i_episode in range(MAX_EPISODE):
         track_r.append(r)
         sum_r += r
         # calculate TD error based on current state, reward and next state
-        td_error = critic.learn(s, r, s_)  # gradient = grad[r + gamma * V(s_) - V(s)]
+        td_error, loss = critic.learn(s, r, s_)  # gradient = grad[r + gamma * V(s_) - V(s)]
         actor.learn(s, a, td_error)     # true_gradient = grad[logPi(s,a) * td_error]
 
         s = s_
@@ -193,14 +193,14 @@ for i_episode in range(MAX_EPISODE):
             if 'running_reward' not in globals():
                 running_reward = ep_rs_sum
             else:
-                running_reward = running_reward * 0.95 + ep_rs_sum * 0.05
+                running_reward = running_reward * 0.99 + ep_rs_sum * 0.01
             if running_reward > DISPLAY_REWARD_THRESHOLD: RENDER = True  # rendering
-            print("episode:", i_episode, "  reward:", int(running_reward))
+            print("episode:", i_episode, "  reward:", int(running_reward), "  loss:", int(loss))
             res.append(sum_r)
             rr.append(running_reward)
             break
     if i_episode % 20 == 0:
-        re.append(np.mean(res[-20:]))
+        re.append(np.mean(rr[-25:]))
             
 
 plt.plot(re)
